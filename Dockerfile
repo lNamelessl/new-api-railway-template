@@ -2,7 +2,7 @@
 #
 # AUTO-BUMP: the weekly-bump GitHub Action rewrites the version in the FROM
 # line below to the newest upstream release that has a matching Docker Hub tag.
-# Keep the "FROM calciumion/new-api:" prefix intact for the bump script.
+# Keep the "FROM calciumion/new-api:v1.0.0-rc.37
 FROM calciumion/new-api:v1.0.0-rc.37
 
 USER root
