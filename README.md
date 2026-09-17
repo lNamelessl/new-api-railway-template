@@ -2,7 +2,7 @@
 
 One-click [new-api](https://github.com/QuantumNous/new-api) (Calcium-Ion, the 48k-star one-api fork) LLM gateway for Railway, with a production topology: **MySQL 8.4 + Redis 7.4 + persistent volumes**, all secrets auto-generated, version pinned, and a weekly auto-bump CI.
 
-**Deploy (one click):** [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/new?github_url=https://github.com/OWNER/new-api-railway-template)
+**Deploy (one click):** [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/new?github_url=https://github.com/lNamelessl/new-api-railway-template)
 
 > After the template is published this button points at the Railway marketplace page; the pre-publish link above deploys straight from this repo.
 
