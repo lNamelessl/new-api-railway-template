@@ -1,0 +1,81 @@
+name: weekly-bump
+
+# Weekly auto-bump: pin the newest upstream new-api release that has a
+# matching Docker Hub tag. Upstream ships fast; this keeps every new
+# one-click deploy of the template on the current release.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  UPSTREAM_REPO: QuantumNous/new-api
+  DOCKER_REPO: calciumion/new-api
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve latest upstream release and verify its Docker tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          LATEST=$(curl -sf "https://api.github.com/repos/${UPSTREAM_REPO}/releases/latest" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
+          if [ -z "$LATEST" ]; then echo "No latest release found"; exit 1; fi
+          echo "Latest upstream release: $LATEST"
+
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://hub.docker.com/v2/repositories/${DOCKER_REPO}/tags/${LATEST}")
+          if [ "$HTTP" != "200" ]; then
+            echo "Docker tag ${LATEST} not published yet (HTTP $HTTP); skipping bump."
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CURRENT=$(grep -o 'FROM calciumion/new-api:[^ ]*' Dockerfile | head -1 | cut -d: -f2)
+          echo "Currently pinned: $CURRENT"
+          if [ "$LATEST" = "$CURRENT" ]; then
+            echo "Already up to date."
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "bump=true" >> "$GITHUB_OUTPUT"
+            echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update pinned version
+        if: steps.resolve.outputs.bump == 'true'
+        run: |
+          set -euo pipefail
+          VER="${{ steps.resolve.outputs.version }}"
+          sed -i "s|FROM calciumion/new-api:.*|FROM calciumion/new-api:${VER}|" Dockerfile
+          git config user.name "weekly-bump bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add Dockerfile
+          git commit -m "chore: bump new-api pin to ${VER}"
+          git push
+
+      - name: Smoke test — deploy the published template and probe /api/status
+        # Bonus check: only runs when RAILWAY_TOKEN and TEMPLATE_CODE repo
+        # secrets are configured (see README). Never blocks the bump.
+        if: steps.resolve.outputs.bump == 'true' && env.RAILWAY_TOKEN != '' && env.TEMPLATE_CODE != ''
+        continue-on-error: true
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          TEMPLATE_CODE: ${{ secrets.TEMPLATE_CODE }}
+        run: |
+          set -euo pipefail
+          npm install -g @railway/cli@latest
+          SMOKE_DIR=$(mktemp -d)
+          cd "$SMOKE_DIR"
+          railway init --name new-api-smoke-$(date +%s)
+          railway deploy -t "$TEMPLATE_CODE" -v "MySQL.MYSQL_DATABASE=new-api" </dev/null
+          for i in $(seq 1 60); do
+            sleep 15
+            STATUS=$(railway status --json | grep -o '"status":"[A-Z]*"' | tail -1 || true)
+            echo "deploy status: $STATUS"
+          done
